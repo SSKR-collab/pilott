@@ -1,0 +1,67 @@
+{
+  "model": {
+    "name": "nRF52840_UniformCNN_Cricket_X_3L_N9",
+    "version": "2.0"
+  },
+  "global": {
+    "dataset": "Cricket_X",
+    "epochs": 500,
+    "num_classes": 12,
+    "input_length": 300,
+    "memory_limit_bytes": 220000,
+    "learning_rate": 0.005
+  },
+  "layers": [
+    {
+      "id": 0,
+      "type": "conv1d",
+      "in_channels": 1,
+      "out_channels": 32,
+      "channels_per_device": 16,
+      "num_devices": 2,
+      "kernel_size": 5,
+      "stride": 1,
+      "padding": 2,
+      "input_length": 300,
+      "output_length": 300
+    },
+    {
+      "id": 1,
+      "type": "conv1d",
+      "in_channels": 32,
+      "out_channels": 32,
+      "channels_per_device": 16,
+      "num_devices": 2,
+      "kernel_size": 5,
+      "stride": 2,
+      "padding": 2,
+      "input_length": 300,
+      "output_length": 150
+    },
+    {
+      "id": 2,
+      "type": "conv1d",
+      "in_channels": 32,
+      "out_channels": 48,
+      "channels_per_device": 16,
+      "num_devices": 3,
+      "kernel_size": 5,
+      "stride": 2,
+      "padding": 2,
+      "input_length": 150,
+      "output_length": 75
+    },
+    {
+      "id": 3,
+      "type": "fc",
+      "input_length": 75,
+      "pooling": [
+        "avg",
+        "max"
+      ],
+      "in_features": 96,
+      "out_features": 12,
+      "num_devices": 1
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "model": {
+    "name": "nRF52840_UniformCNN_Coffee_2L_N15",
+    "version": "2.0"
+  },
+  "global": {
+    "dataset": "Coffee",
+    "epochs": 500,
+    "num_classes": 2,
+    "input_length": 286,
+    "memory_limit_bytes": 220000,
+    "learning_rate": 0.01
+  },
+  "layers": [
+    {
+      "id": 0,
+      "type": "conv1d",
+      "in_channels": 1,
+      "out_channels": 96,
+      "channels_per_device": 16,
+      "num_devices": 6,
+      "kernel_size": 5,
+      "stride": 1,
+      "padding": 2,
+      "input_length": 286,
+      "output_length": 286
+    },
+    {
+      "id": 1,
+      "type": "conv1d",
+      "in_channels": 96,
+      "out_channels": 112,
+      "channels_per_device": 16,
+      "num_devices": 7,
+      "kernel_size": 5,
+      "stride": 2,
+      "padding": 2,
+      "input_length": 286,
+      "output_length": 143
+    },
+    {
+      "id": 2,
+      "type": "fc",
+      "input_length": 143,
+      "pooling": [
+        "avg",
+        "max"
+      ],
+      "in_features": 224,
+      "out_features": 2,
+      "num_devices": 1
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+# Build artifacts
+FirmWare/build/
+*.o
+*.d
+
+# Compiled binaries
+RockNet-main/c_src/main
+RockNet-main/c_src/main_coffee
+RockNet-main/c_src/minirocket_*
+RockNet-main/c_src/distributed_sim/*.out
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Results (generated at runtime)
+results/
+
+# Logs
+RockNet-main/logs/
+
+# Core dumps
+core.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python simulation large files
+RockNet-main/python_simulation/core.*
+RockNet-main/python_simulation/equinox

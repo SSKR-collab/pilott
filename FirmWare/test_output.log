@@ -1,0 +1,2 @@
+rm -f /dev/shm/sem.ipc_sem_L* /dev/shm/ipc_tensor_L*
+./test_distributed.sh

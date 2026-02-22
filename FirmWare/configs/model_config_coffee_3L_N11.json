@@ -1,0 +1,67 @@
+{
+  "model": {
+    "name": "nRF52840_UniformCNN_Coffee_3L_N11",
+    "version": "2.0"
+  },
+  "global": {
+    "dataset": "Coffee",
+    "epochs": 500,
+    "num_classes": 2,
+    "input_length": 286,
+    "memory_limit_bytes": 220000,
+    "learning_rate": 0.005
+  },
+  "layers": [
+    {
+      "id": 0,
+      "type": "conv1d",
+      "in_channels": 1,
+      "out_channels": 32,
+      "channels_per_device": 16,
+      "num_devices": 2,
+      "kernel_size": 5,
+      "stride": 1,
+      "padding": 2,
+      "input_length": 286,
+      "output_length": 286
+    },
+    {
+      "id": 1,
+      "type": "conv1d",
+      "in_channels": 32,
+      "out_channels": 48,
+      "channels_per_device": 16,
+      "num_devices": 3,
+      "kernel_size": 5,
+      "stride": 2,
+      "padding": 2,
+      "input_length": 286,
+      "output_length": 143
+    },
+    {
+      "id": 2,
+      "type": "conv1d",
+      "in_channels": 48,
+      "out_channels": 64,
+      "channels_per_device": 16,
+      "num_devices": 4,
+      "kernel_size": 5,
+      "stride": 2,
+      "padding": 2,
+      "input_length": 143,
+      "output_length": 72
+    },
+    {
+      "id": 3,
+      "type": "fc",
+      "input_length": 72,
+      "pooling": [
+        "avg",
+        "max"
+      ],
+      "in_features": 128,
+      "out_features": 2,
+      "num_devices": 1
+    }
+  ]
+}
