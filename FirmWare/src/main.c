@@ -11,6 +11,21 @@ int run_head_device(int device_id, const char* dataset_name);
 int run_worker_device(int device_id);
 int run_tail_device(int device_id, int num_classes);
 
+// ── Runtime constraint globals (declared extern in lw_pilot_sim.h) ──
+size_t MEMORY_LIMIT_BYTES = DEFAULT_MEMORY_LIMIT_BYTES;   // 256 KB default
+int g_proc_constraint = 0;                                 // -p flag
+
+// ── Processing delay simulation ──
+void proc_delay_flops(long flops) {
+    if (!g_proc_constraint || flops <= 0) return;
+    // Cortex-M4F: ~1 cycle per FMUL/FADD. At 64 MHz, 1 FLOP ≈ 15.625 ns.
+    // We add a usleep for the batch of FLOPs to simulate wall-clock latency.
+    double seconds = (double)flops / (double)PROC_CLOCK_HZ;
+    if (seconds > 1e-6) {
+        usleep((useconds_t)(seconds * 1e6));
+    }
+}
+
 // Global configuration
 static int g_device_id = -1;
 static device_role_t g_device_role = DEVICE_HEAD;
@@ -111,6 +126,10 @@ int parse_arguments(int argc, char* argv[]) {
             g_padding = atoi(argv[i] + 10);
         } else if (strcmp(argv[i], "--debug") == 0) {
             g_debug = 1;
+        } else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--proc-constraint") == 0) {
+            g_proc_constraint = 1;
+        } else if (strncmp(argv[i], "--mem-limit=", 12) == 0) {
+            MEMORY_LIMIT_BYTES = (size_t)atol(argv[i] + 12);
         } else if (strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
             exit(0);
@@ -143,6 +162,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     log_info("Model config loaded: %s, %d layers", g_model_config->name, g_model_config->num_layers);
+
+    // Override memory limit from config JSON if present and not overridden via CLI
+    if (g_model_config->memory_limit_bytes > 0 && MEMORY_LIMIT_BYTES == DEFAULT_MEMORY_LIMIT_BYTES) {
+        MEMORY_LIMIT_BYTES = (size_t)g_model_config->memory_limit_bytes;
+    }
+    log_info("Memory limit: %zu bytes (%zu KB) per device", MEMORY_LIMIT_BYTES, MEMORY_LIMIT_BYTES / 1024);
+    log_info("Processing constraint: %s", g_proc_constraint ? "ENABLED (64 MHz)" : "disabled");
 
     // Use dataset name from config if not overridden via CLI
     if (g_model_config->dataset[0] != '\0' &&

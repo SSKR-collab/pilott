@@ -1,14 +1,14 @@
 {
   "model": {
     "name": "nRF52840_UniformCNN_Cricket_X_2L_N11",
-    "version": "2.0"
+    "version": "2.1"
   },
   "global": {
     "dataset": "Cricket_X",
     "epochs": 500,
     "num_classes": 12,
     "input_length": 300,
-    "memory_limit_bytes": 220000,
+    "memory_limit_bytes": 262144,
     "learning_rate": 0.01
   },
   "layers": [
@@ -50,5 +50,36 @@
       "out_features": 12,
       "num_devices": 1
     }
-  ]
+  ],
+  "memory_analysis": {
+    "per_device": [
+      {
+        "device": "Worker_L0",
+        "bytes": 118192,
+        "kb": 115.4,
+        "fits": true
+      },
+      {
+        "device": "Worker_L1",
+        "bytes": 216832,
+        "kb": 211.8,
+        "fits": true
+      },
+      {
+        "device": "Tail",
+        "bytes": 90240,
+        "kb": 88.1,
+        "fits": true
+      },
+      {
+        "device": "Head",
+        "bytes": 940448,
+        "kb": 918.4,
+        "fits": false
+      }
+    ],
+    "max_worker_or_tail_kb": 211.8,
+    "head_kb": 918.4,
+    "within_256kb": true
+  }
 }

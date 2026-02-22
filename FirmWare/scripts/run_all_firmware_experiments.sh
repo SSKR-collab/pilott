@@ -20,12 +20,21 @@ set -euo pipefail
 #    • Skips experiments that already have results
 #
 #  Usage:
-#    ./run_all_firmware_experiments.sh [UCR_DATA_ROOT] [TIMEOUT_PER_RUN]
+#    ./run_all_firmware_experiments.sh [-p] [UCR_DATA_ROOT] [TIMEOUT_PER_RUN]
+#
+#  Options:
+#    -p   Enable processing constraint (64 MHz) for all runs
 #
 #  Examples:
 #    ./run_all_firmware_experiments.sh
-#    ./run_all_firmware_experiments.sh /path/to/UCR_DATA 7200
+#    ./run_all_firmware_experiments.sh -p /path/to/UCR_DATA 7200
 # =============================================================================
+
+PROC_FLAG=""
+if [[ "${1:-}" == "-p" ]]; then
+    PROC_FLAG="-p"
+    shift
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIRMWARE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -51,6 +60,12 @@ echo "║  Device counts: ${N_VALUES[*]}"
 echo "║  Architectures: 2-layer, 3-layer"
 echo "║  Total runs:    $((${#DATASETS[@]} * ${#N_VALUES[@]} * ${#LAYER_COUNTS[@]}))"
 echo "║  Timeout/run:   ${TIMEOUT_PER_RUN}s"
+if [[ -n "$PROC_FLAG" ]]; then
+    echo "║  Processing:   64 MHz constraint ENABLED"
+else
+    echo "║  Processing:   unconstrained"
+fi
+echo "║  Memory:       256 KB/device (always active)"
 echo "║  UCR Data:      $UCR_ROOT"
 echo "║  Started:       $(date '+%Y-%m-%d %H:%M:%S')"
 echo "╚══════════════════════════════════════════════════════════════════════════════╝"
@@ -148,7 +163,7 @@ for DATASET in "${DATASETS[@]}"; do
             RUN_START=$(date +%s)
             echo "  Starting at $(date '+%H:%M:%S') ..."
 
-            if bash "$RUN_SCRIPT" "$CONFIG_FILE" "$UCR_ROOT" "$TIMEOUT_PER_RUN"; then
+            if bash "$RUN_SCRIPT" $PROC_FLAG "$CONFIG_FILE" "$UCR_ROOT" "$TIMEOUT_PER_RUN"; then
                 COMPLETED=$((COMPLETED + 1))
                 echo "  ✓ Completed successfully"
             else

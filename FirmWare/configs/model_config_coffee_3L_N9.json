@@ -1,14 +1,14 @@
 {
   "model": {
     "name": "nRF52840_UniformCNN_Coffee_3L_N9",
-    "version": "2.0"
+    "version": "2.1"
   },
   "global": {
     "dataset": "Coffee",
     "epochs": 500,
     "num_classes": 2,
     "input_length": 286,
-    "memory_limit_bytes": 220000,
+    "memory_limit_bytes": 262144,
     "learning_rate": 0.005
   },
   "layers": [
@@ -63,5 +63,42 @@
       "out_features": 2,
       "num_devices": 1
     }
-  ]
+  ],
+  "memory_analysis": {
+    "per_device": [
+      {
+        "device": "Worker_L0",
+        "bytes": 112760,
+        "kb": 110.1,
+        "fits": true
+      },
+      {
+        "device": "Worker_L1",
+        "bytes": 132992,
+        "kb": 129.9,
+        "fits": true
+      },
+      {
+        "device": "Worker_L2",
+        "bytes": 87424,
+        "kb": 85.4,
+        "fits": true
+      },
+      {
+        "device": "Tail",
+        "bytes": 19904,
+        "kb": 19.4,
+        "fits": true
+      },
+      {
+        "device": "Head",
+        "bytes": 65560,
+        "kb": 64.0,
+        "fits": true
+      }
+    ],
+    "max_worker_or_tail_kb": 129.9,
+    "head_kb": 64.0,
+    "within_256kb": true
+  }
 }

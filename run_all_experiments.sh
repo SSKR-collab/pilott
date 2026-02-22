@@ -42,10 +42,20 @@ set -euo pipefail
 #    N=15: ~6 kernels/node → ~684 features/device
 #
 #  Usage:
-#    ./run_all_experiments.sh [UCR_DATA_ROOT]
+#    ./run_all_experiments.sh [-p] [UCR_DATA_ROOT]
+#
+#  Options:
+#    -p   Enable processing constraint (64 MHz) for all experiments
+#         Memory constraint (256 KB/device) is ALWAYS active.
 #
 #  Default UCR data root: /mnt/c/Users/GANESH KUMAR/Downloads/Pilot
 # =============================================================================
+
+PROC_FLAG=""
+if [[ "${1:-}" == "-p" ]]; then
+    PROC_FLAG="-p"
+    shift
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UCR_ROOT="${1:-/mnt/c/Users/GANESH KUMAR/Downloads/Pilot}"
@@ -73,6 +83,12 @@ echo "║  FirmWare CNN:  40 runs (4 datasets × 5 N × 2 architectures)"
 echo "║  RockNet:       20 runs (4 datasets × 5 N)"
 echo "║  FW Timeout:    ${FIRMWARE_TIMEOUT}s per run"
 echo "║  RN Timeout:    ${ROCKNET_TIMEOUT}s per run"
+if [[ -n "$PROC_FLAG" ]]; then
+    echo "║  Processing:   64 MHz constraint ENABLED"
+else
+    echo "║  Processing:   unconstrained"
+fi
+echo "║  Memory:       256 KB/device (always active)"
 echo "║  Started:       $(date '+%Y-%m-%d %H:%M:%S')"
 echo "╚══════════════════════════════════════════════════════════════════════════════╝"
 echo ""
@@ -89,7 +105,7 @@ echo "████████████████████████�
 echo ""
 
 if [[ -f "$FIRMWARE_DIR/scripts/run_all_firmware_experiments.sh" ]]; then
-    bash "$FIRMWARE_DIR/scripts/run_all_firmware_experiments.sh" "$UCR_ROOT" "$FIRMWARE_TIMEOUT"
+    bash "$FIRMWARE_DIR/scripts/run_all_firmware_experiments.sh" $PROC_FLAG "$UCR_ROOT" "$FIRMWARE_TIMEOUT"
 else
     echo "ERROR: FirmWare script not found: $FIRMWARE_DIR/scripts/run_all_firmware_experiments.sh"
 fi
@@ -104,7 +120,7 @@ echo "████████████████████████�
 echo ""
 
 if [[ -f "$ROCKNET_DIR/scripts/run_all_rocknet_experiments.sh" ]]; then
-    bash "$ROCKNET_DIR/scripts/run_all_rocknet_experiments.sh" "$UCR_ROOT" "$ROCKNET_TIMEOUT"
+    bash "$ROCKNET_DIR/scripts/run_all_rocknet_experiments.sh" $PROC_FLAG "$UCR_ROOT" "$ROCKNET_TIMEOUT"
 else
     echo "ERROR: RockNet script not found: $ROCKNET_DIR/scripts/run_all_rocknet_experiments.sh"
 fi

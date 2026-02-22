@@ -1,14 +1,14 @@
 {
   "model": {
     "name": "nRF52840_UniformCNN_ECG5000_3L_N15",
-    "version": "2.0"
+    "version": "2.1"
   },
   "global": {
     "dataset": "ECG5000",
     "epochs": 500,
     "num_classes": 5,
     "input_length": 140,
-    "memory_limit_bytes": 220000,
+    "memory_limit_bytes": 262144,
     "learning_rate": 0.005
   },
   "layers": [
@@ -63,5 +63,42 @@
       "out_features": 5,
       "num_devices": 1
     }
-  ]
+  ],
+  "memory_analysis": {
+    "per_device": [
+      {
+        "device": "Worker_L0",
+        "bytes": 56112,
+        "kb": 54.8,
+        "fits": true
+      },
+      {
+        "device": "Worker_L1",
+        "bytes": 115712,
+        "kb": 113.0,
+        "fits": true
+      },
+      {
+        "device": "Worker_L2",
+        "bytes": 113792,
+        "kb": 111.1,
+        "fits": true
+      },
+      {
+        "device": "Tail",
+        "bytes": 36896,
+        "kb": 36.0,
+        "fits": true
+      },
+      {
+        "device": "Head",
+        "bytes": 2820688,
+        "kb": 2754.6,
+        "fits": false
+      }
+    ],
+    "max_worker_or_tail_kb": 113.0,
+    "head_kb": 2754.6,
+    "within_256kb": true
+  }
 }

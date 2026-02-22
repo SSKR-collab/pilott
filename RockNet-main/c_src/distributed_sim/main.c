@@ -46,6 +46,49 @@
 /* Early stopping: stop if test accuracy doesn't improve for this many epochs */
 #define EARLY_STOP_PATIENCE (50)
 
+/* Memory constraint: 256 KB per device (nRF52840) */
+#define DEVICE_MEMORY_LIMIT (256 * 1024)
+
+/* Processing constraint: 64 MHz Cortex-M4F */
+#define PROC_CLOCK_HZ 64000000
+static int g_proc_constraint = 0;  /* set via env var PROC_CONSTRAINT=1 */
+
+static void proc_delay_flops(long flops) {
+    if (!g_proc_constraint || flops <= 0) return;
+    double seconds = (double)flops / (double)PROC_CLOCK_HZ;
+    if (seconds > 1e-6) usleep((useconds_t)(seconds * 1e6));
+}
+
+/* Compute per-node memory usage (static arrays in BSS/data segments) */
+static size_t compute_node_memory(void) {
+    size_t mem = 0;
+    /* conv.h: 4 static float arrays of LENGTH_TIME_SERIES */
+    mem += 4 * LENGTH_TIME_SERIES * sizeof(float);
+    /* linear_classifier.c: weight, d_weight, features, bias, d_bias, out_softmax */
+    mem += 2 * NUM_CLASSES * MAX_FEATURES_PER_DEVICE * sizeof(float); /* weight, d_weight */
+    mem += MAX_FEATURES_PER_DEVICE * sizeof(float);                    /* features */
+    mem += 3 * NUM_CLASSES * sizeof(float);                            /* bias, d_bias, out */
+    /* QADAM optimizer: m_t/v_t weight (uint8), m_t/v_t bias (uint8), scalings, buffers */
+    mem += 2 * NUM_CLASSES * MAX_FEATURES_PER_DEVICE * sizeof(uint8_t); /* m_t, v_t weight */
+    mem += 2 * NUM_CLASSES * sizeof(uint8_t);                           /* m_t, v_t bias */
+    mem += 4 * (NUM_CLASSES * MAX_FEATURES_PER_DEVICE / 256 + 1) * sizeof(float); /* scalings */
+    mem += 2 * 256 * sizeof(float);                                     /* QADAM buffers */
+    /* rocket_config.c: quantiles, biases, kernels, dilations */
+    mem += NUM_KERNELS * NUM_DILATIONS * NUM_BIASES_PER_KERNEL * sizeof(float); /* quantiles */
+    mem += MAX_FEATURES_PER_DEVICE * sizeof(float);                   /* biases */
+    mem += NUM_KERNELS * sizeof(uint16_t);                             /* kernels */
+    mem += NUM_DILATIONS * sizeof(uint32_t);                           /* dilations */
+    /* DTQ LUT */
+    mem += 256 * sizeof(float);
+    /* random_numbers (~500 entries) */
+    mem += 500 * sizeof(float);
+    /* Dataset (const, int8_t per sample point, shared via COW after fork) */
+    mem += LENGTH_TIME_SERIES * (NUM_TRAINING_TIMESERIES + NUM_EVALUATION_TIMESERIES);
+    mem += (NUM_TRAINING_TIMESERIES + NUM_EVALUATION_TIMESERIES); /* labels */
+    mem += 8 * (NUM_TRAINING_TIMESERIES + NUM_EVALUATION_TIMESERIES); /* pointers */
+    return mem;
+}
+
 /* ------------------------------------------------------------------
  * Shared memory layout for inter-process communication
  * Simulates the BLE mixer wireless protocol from the firmware
@@ -144,6 +187,12 @@ static void node_worker(int node_id)
             /* Each node computes partial logits for the same sample */
             classify_part(get_training_timeseries()[sample], partial);
             
+            /* Processing delay: conv FLOPs + linear forward FLOPs */
+            proc_delay_flops(
+                (long)NUM_KERNELS / NUM_NODES * NUM_DILATIONS * LENGTH_TIME_SERIES * 9L +  /* PPV conv */
+                (long)MAX_FEATURES_PER_DEVICE * NUM_CLASSES * 2L                           /* linear fwd */
+            );
+            
             /* Write partial logits to shared memory */
             for (int c = 0; c < NUM_CLASSES; c++) {
                 shm->partial_logits[node_id][c] = partial[c];
@@ -191,6 +240,10 @@ static void node_worker(int node_id)
             /* Batch update */
             if (sample % BATCH_SIZE == BATCH_SIZE - 1) {
                 update_weights();
+                /* Processing delay: QADAM update ~10 ops per parameter */
+                proc_delay_flops(
+                    10L * ((long)NUM_CLASSES * MAX_FEATURES_PER_DEVICE + NUM_CLASSES)
+                );
             }
             
             /* Sync after gradient computation before next sample */
@@ -200,6 +253,9 @@ static void node_worker(int node_id)
         /* Final batch update if needed */
         if (NUM_TRAINING_TIMESERIES % BATCH_SIZE != 0) {
             update_weights();
+            proc_delay_flops(
+                10L * ((long)NUM_CLASSES * MAX_FEATURES_PER_DEVICE + NUM_CLASSES)
+            );
         }
         
         shm->train_correct[node_id] = my_train_correct;
@@ -215,6 +271,12 @@ static void node_worker(int node_id)
         for (uint32_t sample = 0; sample < NUM_EVALUATION_TIMESERIES; sample++) {
             /* Compute partial logits */
             classify_part(get_evaluation_timeseries()[sample], partial);
+            
+            /* Processing delay: conv + linear forward */
+            proc_delay_flops(
+                (long)NUM_KERNELS / NUM_NODES * NUM_DILATIONS * LENGTH_TIME_SERIES * 9L +
+                (long)MAX_FEATURES_PER_DEVICE * NUM_CLASSES * 2L
+            );
             
             for (int c = 0; c < NUM_CLASSES; c++) {
                 shm->partial_logits[node_id][c] = partial[c];
@@ -276,9 +338,11 @@ static void node_worker(int node_id)
             
             printf("[METRICS] Timestamp=%s | Timespan=%.1fs | Epoch=%lu | "
                    "Train_Acc=%.2f%% | Test_Acc=%.2f%% | Infer_Latency=%.3fms | "
-                   "Train_Latency=%.3fms | Memory=%ldKB | Devices=%d\n",
+                   "Train_Latency=%.3fms | Memory=%ldKB | PerNode_Mem=%.1fKB | "
+                   "Devices=%d | ProcConstraint=%d\n",
                    timestamp, timespan, epoch, train_acc, test_acc,
-                   infer_latency_ms, train_latency_ms, rss, NUM_NODES);
+                   infer_latency_ms, train_latency_ms, rss,
+                   compute_node_memory() / 1024.0, NUM_NODES, g_proc_constraint);
             fflush(stdout);
             
             shm->last_train_acc = train_acc;
@@ -324,6 +388,28 @@ int main(void)
     printf("Batch size: %d\n", BATCH_SIZE);
     printf("Optimizer: QADAM (Quantized Adam)\n");
     printf("Time series length: %d\n", LENGTH_TIME_SERIES);
+    
+    /* Memory constraint check */
+    size_t node_mem = compute_node_memory();
+    printf("Per-node memory estimate: %zu bytes (%.1f KB)\n", node_mem, node_mem / 1024.0);
+    printf("Device memory limit: %d bytes (%d KB)\n", DEVICE_MEMORY_LIMIT, DEVICE_MEMORY_LIMIT / 1024);
+    if (node_mem > DEVICE_MEMORY_LIMIT) {
+        printf("[WARNING] Per-node memory (%.1f KB) exceeds 256 KB device limit!\n",
+               node_mem / 1024.0);
+    } else {
+        printf("[OK] Memory within 256 KB limit (%.1f%% utilization)\n",
+               node_mem * 100.0 / DEVICE_MEMORY_LIMIT);
+    }
+    
+    /* Processing constraint from env var */
+    const char *pc_env = getenv("PROC_CONSTRAINT");
+    if (pc_env && atoi(pc_env)) {
+        g_proc_constraint = 1;
+        printf("Processing constraint: ENABLED (64 MHz simulated)\n");
+    } else {
+        printf("Processing constraint: disabled\n");
+    }
+    
     printf("=========================================\n\n");
     fflush(stdout);
     

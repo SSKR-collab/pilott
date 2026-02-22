@@ -15,15 +15,27 @@ set -euo pipefail
 #    • Clean shared memory on exit
 #
 #  Usage:
-#    ./run_firmware_experiment.sh <config.json> [UCR_DATA_ROOT] [TIMEOUT_SEC]
+#    ./run_firmware_experiment.sh [-p] <config.json> [UCR_DATA_ROOT] [TIMEOUT_SEC]
+#
+#  Options:
+#    -p   Enable processing constraint (64 MHz simulated clock)
+#         Memory constraint (256 KB/device) is ALWAYS active.
 #
 #  Example:
 #    ./run_firmware_experiment.sh configs/model_config_cricket_x_2L_N9.json \
 #                                /path/to/UCR_DATA 14400
+#    ./run_firmware_experiment.sh -p configs/model_config_cricket_x_2L_N9.json
 # =============================================================================
 
+PROC_FLAG=""
+if [[ "${1:-}" == "-p" ]]; then
+    PROC_FLAG="-p"
+    shift
+fi
+
 if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <config.json> [UCR_DATA_ROOT] [TIMEOUT_SEC]"
+    echo "Usage: $0 [-p] <config.json> [UCR_DATA_ROOT] [TIMEOUT_SEC]"
+    echo "  -p: Enable processing constraint (64 MHz)"
     exit 1
 fi
 
@@ -116,6 +128,12 @@ echo "║  Config:     $CONFIG_BASENAME"
 echo "║  Dataset:    $DATASET ($NUM_CLASSES classes)"
 echo "║  Conv Layers: $NUM_CONV_LAYERS"
 echo "║  Total Devices: $TOTAL_DEVICES (1 Head + ${WORKERS_STR//|/+} Workers + 1 Tail)"
+echo "║  Memory Limit: 256 KB/device (always active)"
+if [[ -n "$PROC_FLAG" ]]; then
+    echo "║  Processing:  64 MHz constraint ENABLED"
+else
+    echo "║  Processing:  unconstrained"
+fi
 echo "║  Timeout:    ${RUN_TIMEOUT}s"
 echo "║  Log Dir:    $LOG_DIR/"
 echo "║  Started:    $(date '+%Y-%m-%d %H:%M:%S')"
@@ -149,7 +167,7 @@ DEVICE_ID=0
 
 # --- Head Device (ID 0) ---
 echo "  [DEVICE $DEVICE_ID] Head (dataset feeder) ..."
-"$DEVICE_BIN" --config="$CONFIG_FILE" --id=$DEVICE_ID --role=head --dataset="$DATASET" \
+"$DEVICE_BIN" --config="$CONFIG_FILE" --id=$DEVICE_ID --role=head --dataset="$DATASET" $PROC_FLAG \
     > "$LOG_DIR/device_$(printf '%02d' $DEVICE_ID)_head.log" 2>&1 &
 HEAD_PID=$!
 DEVICE_ID=$((DEVICE_ID + 1))
@@ -161,7 +179,7 @@ for LAYER_IDX in $(seq 0 $((NUM_CONV_LAYERS - 1))); do
     for WORKER_IDX in $(seq 0 $((NUM_W - 1))); do
         echo "  [DEVICE $DEVICE_ID] Layer $LAYER_IDX Worker $WORKER_IDX/$NUM_W ..."
         "$DEVICE_BIN" --config="$CONFIG_FILE" --id=$DEVICE_ID --role=worker \
-            --layer-id=$LAYER_IDX --worker-id=$WORKER_IDX --num-workers=$NUM_W \
+            --layer-id=$LAYER_IDX --worker-id=$WORKER_IDX --num-workers=$NUM_W $PROC_FLAG \
             > "$LOG_DIR/device_$(printf '%02d' $DEVICE_ID)_L${LAYER_IDX}_W${WORKER_IDX}.log" 2>&1 &
         DEVICE_ID=$((DEVICE_ID + 1))
         sleep 0.3
@@ -172,7 +190,7 @@ done
 # --- Tail Device ---
 TAIL_ID=$DEVICE_ID
 echo "  [DEVICE $TAIL_ID] Tail classifier ($NUM_CLASSES classes) ..."
-"$DEVICE_BIN" --config="$CONFIG_FILE" --id=$TAIL_ID --role=tail --classes=$NUM_CLASSES \
+"$DEVICE_BIN" --config="$CONFIG_FILE" --id=$TAIL_ID --role=tail --classes=$NUM_CLASSES $PROC_FLAG \
     > "$LOG_DIR/device_$(printf '%02d' $TAIL_ID)_tail.log" 2>&1 &
 TAIL_PID=$!
 

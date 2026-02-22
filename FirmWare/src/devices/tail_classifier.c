@@ -224,6 +224,8 @@ int run_tail_device(int device_id, int num_classes) {
         dropout_forward(&pooled_tensor, &dropout_out, dropout_mask, dropout_rate, !is_testing_phase);
         
         fully_connected_forward(&dropout_out, fc_config, &output_tensor);
+        // Processing constraint: FC forward FLOPs ≈ 2 * in_features * out_features
+        proc_delay_flops(2L * in_features * out_features);
         softmax_forward(&output_tensor, &prob_tensor);
 
         int label = shm_tensor->label;  // from shared memory
@@ -310,6 +312,8 @@ int run_tail_device(int device_id, int num_classes) {
                 cross_entropy_backward(&prob_tensor, &label, 1, &grad_output);
                 // FC backward uses dropout_out (the input to FC) instead of pooled_tensor
                 fully_connected_backward(&grad_output, &dropout_out, fc_config, &grad_pooled, grad_weights, grad_bias);
+                // Processing constraint: FC backward ≈ 4× forward FLOPs
+                proc_delay_flops(4L * in_features * out_features);
                 // Dropout backward: propagate grad through dropout mask
                 dropout_backward(&grad_pooled, dropout_mask, &grad_dropout);
                 dual_pooling1d_backward(&grad_dropout, &input_tensor, &grad_input);

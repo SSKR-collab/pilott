@@ -18,14 +18,26 @@ set -euo pipefail
 #    • Structured CSV output
 #
 #  Usage:
-#    ./run_rocknet_experiment.sh <dataset_name> <num_nodes> [UCR_DATA_ROOT] [TIMEOUT]
+#    ./run_rocknet_experiment.sh [-p] <dataset_name> <num_nodes> [UCR_DATA_ROOT] [TIMEOUT]
+#
+#  Options:
+#    -p   Enable processing constraint (64 MHz simulated clock)
+#         Memory constraint (256 KB/device) is ALWAYS active.
 #
 #  Example:
 #    ./run_rocknet_experiment.sh Cricket_X 9 /path/to/UCR_DATA 7200
+#    ./run_rocknet_experiment.sh -p Cricket_X 9
 # =============================================================================
 
+PROC_FLAG=""
+if [[ "${1:-}" == "-p" ]]; then
+    PROC_FLAG="-p"
+    shift
+fi
+
 if [[ $# -lt 2 ]]; then
-    echo "Usage: $0 <dataset_name> <num_nodes> [UCR_DATA_ROOT] [TIMEOUT_SEC]"
+    echo "Usage: $0 [-p] <dataset_name> <num_nodes> [UCR_DATA_ROOT] [TIMEOUT_SEC]"
+    echo "  -p: Enable processing constraint (64 MHz)"
     echo "  dataset_name: Cricket_X, FaceAll, ECG5000, Coffee"
     echo "  num_nodes:    7, 9, 11, 13, 15"
     exit 1
@@ -54,6 +66,12 @@ echo "║  RockNet Distributed Experiment                                    ║
 echo "╠══════════════════════════════════════════════════════════════════════╣"
 echo "║  Dataset:     $DATASET"
 echo "║  Num Nodes:   $NUM_NODES"
+echo "║  Memory:      256 KB/device (always active)"
+if [[ -n "$PROC_FLAG" ]]; then
+    echo "║  Processing:  64 MHz constraint ENABLED"
+else
+    echo "║  Processing:  unconstrained"
+fi
 echo "║  Timeout:     ${RUN_TIMEOUT}s"
 echo "║  Log Dir:     $LOG_DIR/"
 echo "║  UCR Data:    $UCR_ROOT"
@@ -121,6 +139,9 @@ START_TIME=$(date +%s)
 START_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
 # Run with timeout, collecting output
+if [[ -n "$PROC_FLAG" ]]; then
+    export PROC_CONSTRAINT=1
+fi
 timeout "$RUN_TIMEOUT" "$BINARY" 2>&1 | tee "$LOG_DIR/run.log" &
 RUN_PID=$!
 

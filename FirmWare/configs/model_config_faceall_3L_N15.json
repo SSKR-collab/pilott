@@ -1,14 +1,14 @@
 {
   "model": {
     "name": "nRF52840_UniformCNN_FaceAll_3L_N15",
-    "version": "2.0"
+    "version": "2.1"
   },
   "global": {
     "dataset": "FaceAll",
     "epochs": 500,
     "num_classes": 14,
     "input_length": 131,
-    "memory_limit_bytes": 220000,
+    "memory_limit_bytes": 262144,
     "learning_rate": 0.005
   },
   "layers": [
@@ -63,5 +63,42 @@
       "out_features": 14,
       "num_devices": 1
     }
-  ]
+  ],
+  "memory_analysis": {
+    "per_device": [
+      {
+        "device": "Worker_L0",
+        "bytes": 52620,
+        "kb": 51.4,
+        "fits": true
+      },
+      {
+        "device": "Worker_L1",
+        "bytes": 112448,
+        "kb": 109.8,
+        "fits": true
+      },
+      {
+        "device": "Worker_L2",
+        "bytes": 112000,
+        "kb": 109.4,
+        "fits": true
+      },
+      {
+        "device": "Tail",
+        "bytes": 70976,
+        "kb": 69.3,
+        "fits": true
+      },
+      {
+        "device": "Head",
+        "bytes": 1188652,
+        "kb": 1160.8,
+        "fits": false
+      }
+    ],
+    "max_worker_or_tail_kb": 109.8,
+    "head_kb": 1160.8,
+    "within_256kb": true
+  }
 }

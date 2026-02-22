@@ -20,7 +20,17 @@ typedef struct message message_t;
 #define MAX_CLASSES 32
 #define MAX_CHANNELS 128
 #define MAX_SEQUENCE_LENGTH 1000
-#define MEMORY_LIMIT_BYTES (1024 * 1024)  // 1MB per device (for ECG5000 dataset)
+#define DEFAULT_MEMORY_LIMIT_BYTES (256 * 1024)  // 256KB per device (nRF52840 constraint)
+
+// Runtime memory limit (can be overridden via --mem-limit=N or config JSON)
+extern size_t MEMORY_LIMIT_BYTES;
+
+// Processing constraint: simulate 64 MHz Cortex-M4 clock
+#define PROC_CLOCK_HZ  64000000   // 64 MHz
+#define CYCLES_PER_FMUL 1         // single-cycle float multiply on Cortex-M4F
+#define CYCLES_PER_FADD 1         // single-cycle float add
+extern int g_proc_constraint;      // 0 = disabled, 1 = enabled (--proc-constraint / -p)
+void proc_delay_flops(long flops);  // Simulate processing delay proportional to FLOPs
 
 // Device roles
 typedef enum {

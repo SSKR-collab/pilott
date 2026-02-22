@@ -60,16 +60,26 @@ int run_worker_device(int device_id) {
     
     conv1d_config_t* conv_config = create_conv1d_config(in_channels, worker_out_channels, kernel_size, stride, padding);
     
-    float* grad_weights = malloc(conv_config->weights_size);
-    float* grad_bias    = malloc(conv_config->bias_size);
+    float* grad_weights = (float*)sim_malloc(conv_config->weights_size);
+    float* grad_bias    = (float*)sim_malloc(conv_config->bias_size);
 
     // --- Adam optimizer buffers ---
     int num_w = conv_config->weights_size / sizeof(float);
     int num_b = conv_config->bias_size / sizeof(float);
-    float* m_weights = (float*)calloc(num_w, sizeof(float));
-    float* v_weights = (float*)calloc(num_w, sizeof(float));
-    float* m_bias    = (float*)calloc(num_b, sizeof(float));
-    float* v_bias    = (float*)calloc(num_b, sizeof(float));
+    float* m_weights = (float*)sim_malloc(num_w * sizeof(float));
+    float* v_weights = (float*)sim_malloc(num_w * sizeof(float));
+    float* m_bias    = (float*)sim_malloc(num_b * sizeof(float));
+    float* v_bias    = (float*)sim_malloc(num_b * sizeof(float));
+    if (!grad_weights || !grad_bias || !m_weights || !v_weights || !m_bias || !v_bias) {
+        log_error("Worker %d: Memory allocation failed (exceeds %zu KB limit)",
+                  device_id, MEMORY_LIMIT_BYTES / 1024);
+        print_memory_usage();
+        return -1;
+    }
+    memset(m_weights, 0, num_w * sizeof(float));
+    memset(v_weights, 0, num_w * sizeof(float));
+    memset(m_bias, 0, num_b * sizeof(float));
+    memset(v_bias, 0, num_b * sizeof(float));
     float adam_beta1 = 0.9f;
     float adam_beta2 = 0.999f;
     float adam_eps   = 1e-8f;
@@ -169,31 +179,41 @@ int run_worker_device(int device_id) {
     conv_out.batch_size = 1;
     conv_out.channels   = worker_out_channels;
     conv_out.length     = output_length;
-    conv_out.data       = malloc(sizeof(float) * worker_out_channels * output_length);
+    conv_out.data       = (float*)sim_malloc(sizeof(float) * worker_out_channels * output_length);
 
     tensor_t gn_out = conv_out;
-    gn_out.data = malloc(sizeof(float) * worker_out_channels * output_length);
+    gn_out.data = (float*)sim_malloc(sizeof(float) * worker_out_channels * output_length);
     tensor_t gn_pre_relu = gn_out;
-    gn_pre_relu.data = malloc(sizeof(float) * worker_out_channels * output_length);
+    gn_pre_relu.data = (float*)sim_malloc(sizeof(float) * worker_out_channels * output_length);
 
     // ---------- BACKWARD ----------
     tensor_t grad_out = conv_out;
-    grad_out.data = malloc(sizeof(float) * worker_out_channels * output_length);
+    grad_out.data = (float*)sim_malloc(sizeof(float) * worker_out_channels * output_length);
 
     tensor_t grad_gn = conv_out;
-    grad_gn.data = malloc(sizeof(float) * worker_out_channels * output_length);
+    grad_gn.data = (float*)sim_malloc(sizeof(float) * worker_out_channels * output_length);
 
     tensor_t grad_input;
     grad_input.batch_size = 1;
     grad_input.channels   = in_channels;
     grad_input.length     = input_length;
-    grad_input.data       = malloc(sizeof(float) * in_channels * input_length);
+    grad_input.data       = (float*)sim_malloc(sizeof(float) * in_channels * input_length);
 
     tensor_t grad_conv;
     grad_conv.batch_size = 1;
     grad_conv.channels   = worker_out_channels;
     grad_conv.length     = output_length;
-    grad_conv.data       = malloc(sizeof(float) * worker_out_channels * output_length);
+    grad_conv.data       = (float*)sim_malloc(sizeof(float) * worker_out_channels * output_length);
+
+    if (!conv_out.data || !gn_out.data || !gn_pre_relu.data ||
+        !grad_out.data || !grad_gn.data || !grad_input.data || !grad_conv.data) {
+        log_error("Worker %d (L%d): Buffer allocation failed (exceeds %zu KB limit)",
+                  device_id, layer_id, MEMORY_LIMIT_BYTES / 1024);
+        print_memory_usage();
+        return -1;
+    }
+    log_info("Worker %d (L%d): Memory allocation complete", device_id, layer_id);
+    print_memory_usage();
 
     
     log_info("starting round loop...............");
@@ -217,7 +237,9 @@ int run_worker_device(int device_id) {
         memset(grad_bias, 0, conv_config->bias_size);
 
         conv1d_forward(&input_tensor, conv_config, &conv_out);
-        // relu_forward(&conv_out, &gn_out);
+        // Processing constraint: simulate Conv1D FLOPs on 64 MHz MCU
+        // Conv1D FLOPs ≈ 2 * out_channels * in_channels * kernel_size * output_length
+        proc_delay_flops(2L * worker_out_channels * in_channels * kernel_size * output_length);
         int num_groups = 8; 
         group_norm_forward(&conv_out, &gn_pre_relu, num_groups);
         relu_forward(&gn_pre_relu, &gn_out);
@@ -276,6 +298,8 @@ int run_worker_device(int device_id) {
                      grad_conv.data[0], grad_conv.data[1], grad_conv.data[2],
                      grad_conv.data[3], grad_conv.data[4]);
             conv1d_backward(&grad_conv,&input_tensor,conv_config,&grad_input,grad_weights,grad_bias);
+            // Processing constraint: backward ≈ 2× forward FLOPs
+            proc_delay_flops(4L * worker_out_channels * in_channels * kernel_size * output_length);
             log_info("conv backward output[0-4]: %.4f %.4f %.4f %.4f %.4f", 
                      grad_input.data[0], grad_input.data[1], grad_input.data[2],
                      grad_input.data[3], grad_input.data[4]);
@@ -337,6 +361,7 @@ free(m_bias);
 free(v_bias);
 
     free_conv1d_config(conv_config);
-    log_info("Worker device %d completed successfully", device_id);
+    log_info("Worker device %d completed (peak memory logged above)", device_id);
+    print_memory_usage();
     return 0;
 }
