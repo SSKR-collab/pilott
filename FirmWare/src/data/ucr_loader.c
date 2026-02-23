@@ -90,8 +90,8 @@ dataset_t* load_ucr_dataset(const char* filename) {
 
     log_info("Dataset file: %d samples, %d time points", num_lines, sample_length);
 
-    // ---------- Allocate dataset (for ALL samples initially using malloc) ----------
-    dataset_t* dataset = sim_malloc(sizeof(dataset_t));
+    // ---------- Allocate dataset (plain malloc — simulates flash storage) ----------
+    dataset_t* dataset = malloc(sizeof(dataset_t));
     if (!dataset) {
         fclose(file);
         return NULL;
@@ -162,11 +162,9 @@ dataset_t* load_ucr_dataset(const char* filename) {
     }
 
     // ---------- Apply limits AFTER shuffle ----------
-    int max_samples = MEMORY_LIMIT_BYTES / (sample_length * sizeof(float) * 2);
-    if (sample_idx > max_samples) {
-        log_info("Limiting dataset: %d → %d samples (memory limit)", sample_idx, max_samples);
-        sample_idx = max_samples;
-    }
+    // Note: dataset storage simulates flash/external memory on the nRF52840
+    // (2 MB external flash). It does NOT count against the 256 KB SRAM limit.
+    // Only working buffers (aug_buffer, single-sample tensors) count as RAM.
     int sample_limit = 500;
     if (sample_idx > sample_limit) {
         log_info("Limiting dataset to %d samples", sample_limit);
@@ -174,12 +172,12 @@ dataset_t* load_ucr_dataset(const char* filename) {
     }
     dataset->num_samples = sample_idx;
 
-    // Copy trimmed data to sim_malloc buffers and free large malloc buffers
+    // Trim to final size using plain malloc (dataset = flash storage simulation)
     {
         size_t final_data_size  = sample_idx * sample_length * sizeof(float);
         size_t final_label_size = sample_idx * sizeof(int);
-        float* final_data   = sim_malloc(final_data_size);
-        int*   final_labels = sim_malloc(final_label_size);
+        float* final_data   = malloc(final_data_size);
+        int*   final_labels = malloc(final_label_size);
         if (final_data && final_labels) {
             memcpy(final_data,   dataset->data,   final_data_size);
             memcpy(final_labels, dataset->labels, final_label_size);
@@ -188,6 +186,8 @@ dataset_t* load_ucr_dataset(const char* filename) {
             dataset->data   = final_data;
             dataset->labels = final_labels;
         }
+        log_info("Dataset flash storage: %.1f KB (not counted in SRAM budget)",
+                 (final_data_size + final_label_size) / 1024.0);
     }
 
     // ---------- Count unique classes ----------
@@ -216,15 +216,10 @@ dataset_t* load_ucr_dataset(const char* filename) {
 
 void free_dataset(dataset_t* dataset) {
     if (dataset) {
-        if (dataset->data) {
-            size_t data_size = dataset->num_samples * dataset->sample_length * sizeof(float);
-            sim_free_tracked(dataset->data, data_size);
-        }
-        if (dataset->labels) {
-            size_t label_size = dataset->num_samples * sizeof(int);
-            sim_free_tracked(dataset->labels, label_size);
-        }
-        sim_free_tracked(dataset, sizeof(dataset_t));
+        /* Dataset buffers are plain malloc (flash storage simulation) */
+        free(dataset->data);
+        free(dataset->labels);
+        free(dataset);
     }
 }
 

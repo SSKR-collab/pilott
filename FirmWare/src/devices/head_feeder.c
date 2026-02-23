@@ -180,30 +180,26 @@ static void apply_augmentation(float* data, int length) {
 
     log_info("Dataset loaded: %d samples, %d time points, %d classes",
              train_dataset->num_samples, train_dataset->sample_length, train_dataset->num_classes);
-    
-    // Check memory constraint
-    size_t dataset_memory = train_dataset->num_samples * train_dataset->sample_length * sizeof(float) + train_dataset->num_samples * sizeof(int);
 
-    if (dataset_memory > MEMORY_LIMIT_BYTES * 0.8) {  // Use 80% of limit for safety
-        log_error("Dataset too large for memory constraint (%.1f KB > %.1f KB)",
-                  dataset_memory / 1024.0f, (MEMORY_LIMIT_BYTES * 0.8) / 1024.0f);
-        free_dataset(train_dataset);
-        free_dataset(test_dataset);
-        ipc_tensor_close(shm_ptr, shm_size);
-        ipc_sem_close(fwd_sem);
-        ipc_sem_close(bwd_sem);
-        return -1;
-    }
-    
+    /*
+     * Memory model for Head device:
+     *   - Dataset storage = flash (plain malloc, NOT counted in 256 KB SRAM)
+     *   - Working RAM = augmentation buffer + single-sample tensor  (sim_malloc)
+     *   - Shared memory = mmap'd IPC region (not counted)
+     */
+    size_t head_working_ram = sizeof(float) * output_channels * output_length;  /* aug_buffer */
+    log_info("Head SRAM usage: %.1f KB (aug_buffer), limit: %zu KB",
+             head_working_ram / 1024.0, MEMORY_LIMIT_BYTES / 1024);
 
     sleep(6);  // Give workers and tail 6 seconds to initialize (tail starts last at ~5s)
     log_info("Head: All devices should be ready, starting sequential training");
     log_info("Head: Data augmentation ENABLED for training samples (jitter+scale+warp+shift)");
 
-    // Allocate augmentation buffer (reused each sample)
-    float* aug_buffer = (float*)malloc(sizeof(float) * output_channels * output_length);
+    // Allocate augmentation buffer (this IS working RAM — use sim_malloc)
+    float* aug_buffer = (float*)sim_malloc(sizeof(float) * output_channels * output_length);
     if (!aug_buffer) {
-        log_error("Failed to allocate augmentation buffer");
+        log_error("Failed to allocate augmentation buffer (exceeds %zu KB limit)",
+                  MEMORY_LIMIT_BYTES / 1024);
         return -1;
     }
 
